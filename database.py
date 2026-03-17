@@ -78,13 +78,15 @@ def get_members(chat_id, include_bots=False):
     if include_bots:
         cur.execute("""
             SELECT user_id, first_name, username, is_bot, is_admin
-            FROM members WHERE chat_id = ?
+            FROM members
+            WHERE chat_id = ?
             ORDER BY first_name COLLATE NOCASE
         """, (chat_id,))
     else:
         cur.execute("""
             SELECT user_id, first_name, username, is_bot, is_admin
-            FROM members WHERE chat_id = ? AND is_bot = 0
+            FROM members
+            WHERE chat_id = ? AND is_bot = 0
             ORDER BY first_name COLLATE NOCASE
         """, (chat_id,))
 
@@ -106,15 +108,27 @@ def get_members(chat_id, include_bots=False):
 def get_admin_members(chat_id):
     conn = get_connection()
     cur = conn.cursor()
+
     cur.execute("""
         SELECT user_id, first_name, username, is_bot, is_admin
         FROM members
         WHERE chat_id = ? AND is_bot = 0 AND is_admin = 1
         ORDER BY first_name COLLATE NOCASE
     """, (chat_id,))
+
     rows = cur.fetchall()
     conn.close()
-    return [{"user_id": r[0], "first_name": r[1] or "Admin", "username": r[2] or "", "is_bot": bool(r[3]), "is_admin": bool(r[4])} for r in rows]
+
+    return [
+        {
+            "user_id": row[0],
+            "first_name": row[1] or "Admin",
+            "username": row[2] or "",
+            "is_bot": bool(row[3]),
+            "is_admin": bool(row[4]),
+        }
+        for row in rows
+    ]
 
 
 def get_member_count(chat_id):
@@ -129,17 +143,33 @@ def get_member_count(chat_id):
 def search_members(chat_id, keyword):
     conn = get_connection()
     cur = conn.cursor()
+
     pattern = f"%{keyword.lower()}%"
     cur.execute("""
         SELECT user_id, first_name, username, is_bot, is_admin
         FROM members
-        WHERE chat_id = ? AND is_bot = 0
-          AND (LOWER(first_name) LIKE ? OR LOWER(username) LIKE ?)
+        WHERE chat_id = ?
+          AND is_bot = 0
+          AND (
+            LOWER(first_name) LIKE ?
+            OR LOWER(username) LIKE ?
+          )
         ORDER BY first_name COLLATE NOCASE
     """, (chat_id, pattern, pattern))
+
     rows = cur.fetchall()
     conn.close()
-    return [{"user_id": r[0], "first_name": r[1] or "Kullanıcı", "username": r[2] or "", "is_bot": bool(r[3]), "is_admin": bool(r[4])} for r in rows]
+
+    return [
+        {
+            "user_id": row[0],
+            "first_name": row[1] or "Kullanıcı",
+            "username": row[2] or "",
+            "is_bot": bool(row[3]),
+            "is_admin": bool(row[4]),
+        }
+        for row in rows
+    ]
 
 
 def get_settings(chat_id):
@@ -150,14 +180,25 @@ def get_settings(chat_id):
     conn.close()
 
     if row:
-        return {"cooldown": row[1], "batch_size": row[2], "random_tag_default": row[3], "enable_log": bool(row[4])}
+        return {
+            "cooldown": row[1],
+            "batch_size": row[2],
+            "random_tag_default": row[3],
+            "enable_log": bool(row[4]),
+        }
 
-    return {"cooldown": 20, "batch_size": 5, "random_tag_default": 10, "enable_log": True}
+    return {
+        "cooldown": 20,
+        "batch_size": 5,
+        "random_tag_default": 10,
+        "enable_log": True,
+    }
 
 
 def save_settings(chat_id, cooldown, batch_size, random_tag_default, enable_log):
     conn = get_connection()
     cur = conn.cursor()
+
     cur.execute("""
         INSERT INTO settings (chat_id, cooldown, batch_size, random_tag_default, enable_log)
         VALUES (?, ?, ?, ?, ?)
@@ -167,5 +208,6 @@ def save_settings(chat_id, cooldown, batch_size, random_tag_default, enable_log)
             random_tag_default=excluded.random_tag_default,
             enable_log=excluded.enable_log
     """, (chat_id, cooldown, batch_size, random_tag_default, int(enable_log)))
+
     conn.commit()
     conn.close()
