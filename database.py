@@ -4,8 +4,7 @@ DB_NAME = "members.db"
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME)
-    return conn
+    return sqlite3.connect(DB_NAME)
 
 
 def init_db():
@@ -50,10 +49,17 @@ def remove_member(chat_id, user_id):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        DELETE FROM members
-        WHERE chat_id = ? AND user_id = ?
-    """, (chat_id, user_id))
+    cur.execute("DELETE FROM members WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+
+    conn.commit()
+    conn.close()
+
+
+def clear_admin_flags(chat_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("UPDATE members SET is_admin = 0 WHERE chat_id = ?", (chat_id,))
 
     conn.commit()
     conn.close()
@@ -93,35 +99,6 @@ def get_members(chat_id, include_bots=False):
     ]
 
 
-def get_member_count(chat_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT COUNT(*)
-        FROM members
-        WHERE chat_id = ? AND is_bot = 0
-    """, (chat_id,))
-
-    count = cur.fetchone()[0]
-    conn.close()
-    return count
-
-
-def clear_admin_flags(chat_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        UPDATE members
-        SET is_admin = 0
-        WHERE chat_id = ?
-    """, (chat_id,))
-
-    conn.commit()
-    conn.close()
-
-
 def get_admin_members(chat_id):
     conn = get_connection()
     cur = conn.cursor()
@@ -140,6 +117,54 @@ def get_admin_members(chat_id):
         {
             "user_id": row[0],
             "first_name": row[1] or "Admin",
+            "username": row[2] or "",
+            "is_bot": bool(row[3]),
+            "is_admin": bool(row[4]),
+        }
+        for row in rows
+    ]
+
+
+def get_member_count(chat_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM members
+        WHERE chat_id = ? AND is_bot = 0
+    """, (chat_id,))
+
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
+
+
+def search_members(chat_id, keyword):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    pattern = f"%{keyword.lower()}%"
+
+    cur.execute("""
+        SELECT user_id, first_name, username, is_bot, is_admin
+        FROM members
+        WHERE chat_id = ?
+          AND is_bot = 0
+          AND (
+            LOWER(first_name) LIKE ?
+            OR LOWER(username) LIKE ?
+          )
+        ORDER BY first_name COLLATE NOCASE
+    """, (chat_id, pattern, pattern))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [
+        {
+            "user_id": row[0],
+            "first_name": row[1] or "Kullanıcı",
             "username": row[2] or "",
             "is_bot": bool(row[3]),
             "is_admin": bool(row[4]),
