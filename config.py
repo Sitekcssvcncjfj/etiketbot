@@ -2,8 +2,10 @@ import os
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-SUPPORT_GROUP_URL = "https://t.me/garibansikenholding"
-ADD_BOT_URL = os.getenv("ADD_BOT_URL", "https://t.me/your_bot?startgroup=true")
+BOT_NAME = os.getenv("BOT_NAME", "Premium Etiket Botu")
+SUPPORT_GROUP_URL = "https://t.me/KGBotomasyon"
+ADD_BOT_URL = os.getenv("ADD_BOT_URL", "https://t.me/your_bot_username?startgroup=true")
+OWNER_URL = os.getenv("OWNER_URL", "https://t.me/your_username")
 
 LOG_CHAT_ID = int(os.getenv("LOG_CHAT_ID", "0"))
 
