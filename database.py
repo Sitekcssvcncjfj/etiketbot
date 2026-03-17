@@ -9,9 +9,9 @@ def get_connection():
 
 def init_db():
     conn = get_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS members (
             chat_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
@@ -28,9 +28,9 @@ def init_db():
 
 def add_member(chat_id, user_id, first_name, username, is_bot):
     conn = get_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute("""
+    cur.execute("""
         INSERT OR REPLACE INTO members (chat_id, user_id, first_name, username, is_bot)
         VALUES (?, ?, ?, ?, ?)
     """, (chat_id, user_id, first_name, username, int(is_bot)))
@@ -39,18 +39,30 @@ def add_member(chat_id, user_id, first_name, username, is_bot):
     conn.close()
 
 
+def remove_member(chat_id, user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM members WHERE chat_id = ? AND user_id = ?
+    """, (chat_id, user_id))
+
+    conn.commit()
+    conn.close()
+
+
 def get_members(chat_id):
     conn = get_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute("""
+    cur.execute("""
         SELECT user_id, first_name, username, is_bot
         FROM members
         WHERE chat_id = ? AND is_bot = 0
         ORDER BY first_name COLLATE NOCASE
     """, (chat_id,))
 
-    rows = cursor.fetchall()
+    rows = cur.fetchall()
     conn.close()
 
     return [
@@ -66,14 +78,14 @@ def get_members(chat_id):
 
 def get_member_count(chat_id):
     conn = get_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute("""
+    cur.execute("""
         SELECT COUNT(*)
         FROM members
         WHERE chat_id = ? AND is_bot = 0
     """, (chat_id,))
 
-    count = cursor.fetchone()[0]
+    count = cur.fetchone()[0]
     conn.close()
     return count
