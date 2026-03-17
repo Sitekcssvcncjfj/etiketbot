@@ -1,5 +1,6 @@
 import os
 import time
+import html
 import logging
 from telegram import Update
 from telegram.constants import ChatType
@@ -10,25 +11,33 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from telegram.error import TelegramError
 
-from database import init_db, add_member, remove_member, get_members, get_member_count
+from database import (
+    init_db,
+    add_or_update_member,
+    remove_member,
+    get_members,
+    get_member_count,
+    clear_admin_flags,
+    get_admin_members,
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
+logger = logging.getLogger(__name__)
+
 TOKEN = os.getenv("BOT_TOKEN")
-all_cooldowns = {}
+ALL_COOLDOWNS = {}
+COOLDOWN_SECONDS = 20
+BATCH_SIZE = 5
 
 
 def mention_html(user_id: int, name: str) -> str:
-    safe_name = (
-        (name or "Kullanıcı")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    safe_name = html.escape(name or "Kullanıcı")
     return f"<a href='tg://user?id={user_id}'>{safe_name}</a>"
 
 
@@ -54,16 +63,63 @@ async def admin_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool
     return True
 
 
-def check_cooldown(chat_id: int, seconds: int = 20) -> int:
+def check_cooldown(chat_id: int, seconds: int = COOLDOWN_SECONDS) -> int:
     now = time.time()
-    last_used = all_cooldowns.get(chat_id, 0)
+    last_used = ALL_COOLDOWNS.get(chat_id, 0)
     diff = now - last_used
 
     if diff < seconds:
         return int(seconds - diff)
 
-    all_cooldowns[chat_id] = now
+    ALL_COOLDOWNS[chat_id] = now
     return 0
+
+
+def parse_limit(args):
+    if not args:
+        return None
+
+    try:
+        limit = int(args[0])
+        if limit > 0:
+            return limit
+    except (ValueError, TypeError):
+        pass
+
+    return None
+
+
+async def send_mentions(update: Update, mentions: list[str], title: str):
+    if not update.message:
+        return
+
+    if not mentions:
+        await update.message.reply_text("Etiketlenecek kullanıcı bulunamadı.")
+        return
+
+    for i in range(0, len(mentions), BATCH_SIZE):
+        batch = mentions[i:i + BATCH_SIZE]
+        await update.message.reply_text(
+            f"{title}\n" + " ".join(batch),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+
+
+async def sync_admins(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    clear_admin_flags(chat_id)
+    admins = await context.bot.get_chat_administrators(chat_id)
+
+    for admin in admins:
+        user = admin.user
+        add_or_update_member(
+            chat_id=chat_id,
+            user_id=user.id,
+            first_name=user.first_name or "Admin",
+            username=user.username or "",
+            is_bot=user.is_bot,
+            is_admin=1
+        )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,9 +129,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Komutlar:\n"
             "/admins - Adminleri etiketle\n"
             "/all - Kayıtlı üyeleri etiketle\n"
-            "/all 10 - Sadece 10 kişiyi etiketle\n"
-            "/count - Veritabanındaki kayıtlı üye sayısı\n"
-            "/membercount - Gruptaki toplam üye sayısı"
+            "/all 20 - Sadece 20 kişiyi etiketle\n"
+            "/count - Kayıtlı üye sayısı\n"
+            "/membercount - Gruptaki toplam üye sayısı\n"
+            "/syncadmins - Adminleri veritabanına kaydet"
         )
 
 
@@ -89,12 +146,13 @@ async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         return
 
-    add_member(
+    add_or_update_member(
         chat_id=chat.id,
         user_id=user.id,
         first_name=user.first_name or "Kullanıcı",
         username=user.username or "",
-        is_bot=user.is_bot
+        is_bot=user.is_bot,
+        is_admin=0
     )
 
 
@@ -102,19 +160,17 @@ async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE)
     message = update.message
     chat = update.effective_chat
 
-    if not message or not chat:
-        return
-
-    if not message.new_chat_members:
+    if not message or not chat or not message.new_chat_members:
         return
 
     for user in message.new_chat_members:
-        add_member(
+        add_or_update_member(
             chat_id=chat.id,
             user_id=user.id,
             first_name=user.first_name or "Kullanıcı",
             username=user.username or "",
-            is_bot=user.is_bot
+            is_bot=user.is_bot,
+            is_admin=0
         )
 
 
@@ -122,10 +178,7 @@ async def handle_left_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
     message = update.message
     chat = update.effective_chat
 
-    if not message or not chat:
-        return
-
-    if not message.left_chat_member:
+    if not message or not chat or not message.left_chat_member:
         return
 
     user = message.left_chat_member
@@ -136,27 +189,26 @@ async def admins_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only(update, context):
         return
 
-    chat = update.effective_chat
-    admins = await context.bot.get_chat_administrators(chat.id)
+    chat_id = update.effective_chat.id
+    await sync_admins(chat_id, context)
 
-    mentions = []
-    for admin in admins:
-        user = admin.user
-        if user.is_bot:
-            continue
-        mentions.append(mention_html(user.id, user.first_name or "Admin"))
+    admins = get_admin_members(chat_id)
+    mentions = [mention_html(m["user_id"], m["first_name"]) for m in admins]
 
-    if not mentions:
-        await update.message.reply_text("Etiketlenecek admin bulunamadı.")
+    await send_mentions(update, mentions, "Adminler:")
+
+
+async def syncadmins_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await admin_only(update, context):
         return
 
-    batch_size = 5
-    for i in range(0, len(mentions), batch_size):
-        batch = mentions[i:i + batch_size]
-        await update.message.reply_text(
-            "Adminler:\n" + " ".join(batch),
-            parse_mode="HTML"
-        )
+    chat_id = update.effective_chat.id
+    await sync_admins(chat_id, context)
+    admin_count = len(get_admin_members(chat_id))
+
+    await update.message.reply_text(
+        f"Admin senkronizasyonu tamamlandı. Kayıtlı admin sayısı: {admin_count}"
+    )
 
 
 async def all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,7 +216,8 @@ async def all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     chat_id = update.effective_chat.id
-    remaining = check_cooldown(chat_id, 20)
+
+    remaining = check_cooldown(chat_id)
     if remaining > 0:
         await update.message.reply_text(
             f"Bu komut çok sık kullanılıyor. {remaining} saniye sonra tekrar dene."
@@ -176,34 +229,16 @@ async def all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not members:
         await update.message.reply_text(
             "Henüz kayıtlı üye yok.\n"
-            "Bot yeni girenleri ve mesaj atanları kaydeder."
+            "Bot; mesaj atanları, yeni girenleri ve adminleri kaydeder."
         )
         return
 
-    limit = None
-    if context.args:
-        try:
-            limit = int(context.args[0])
-            if limit <= 0:
-                limit = None
-        except ValueError:
-            pass
-
+    limit = parse_limit(context.args)
     if limit:
         members = members[:limit]
 
-    mentions = [
-        mention_html(member["user_id"], member["first_name"])
-        for member in members
-    ]
-
-    batch_size = 5
-    for i in range(0, len(mentions), batch_size):
-        batch = mentions[i:i + batch_size]
-        await update.message.reply_text(
-            "Etiket:\n" + " ".join(batch),
-            parse_mode="HTML"
-        )
+    mentions = [mention_html(member["user_id"], member["first_name"]) for member in members]
+    await send_mentions(update, mentions, "Etiket:")
 
 
 async def count_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -229,6 +264,18 @@ async def membercount_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("Bir hata oluştu:", exc_info=context.error)
+
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "Bir hata oluştu. Lütfen daha sonra tekrar dene."
+            )
+        except TelegramError:
+            pass
+
+
 def main():
     if not TOKEN:
         raise ValueError("BOT_TOKEN ortam değişkeni eksik!")
@@ -242,13 +289,16 @@ def main():
     app.add_handler(CommandHandler("all", all_command))
     app.add_handler(CommandHandler("count", count_command))
     app.add_handler(CommandHandler("membercount", membercount_command))
+    app.add_handler(CommandHandler("syncadmins", syncadmins_command))
 
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, handle_left_member))
     app.add_handler(MessageHandler(filters.ALL & ~filters.StatusUpdate.ALL, track_users))
 
-    print("Bot çalışıyor...")
-    app.run_polling()
+    app.add_error_handler(error_handler)
+
+    logger.info("Bot çalışıyor...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
