@@ -1,74 +1,100 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from config import SUPPORT_GROUP_URL, ADD_BOT_URL, OWNER_URL
 
 
-def main_menu_keyboard():
+def home_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 Destek Grubu", url="https://t.me/your_support_group")],
-        [InlineKeyboardButton("➕ Gruba Ekle", url="https://t.me/your_bot?startgroup=true")],
-        [InlineKeyboardButton("👮 Admin Paneli", callback_data="panel_main")],
-        [InlineKeyboardButton("📖 Komutlar", callback_data="panel_help")],
+        [InlineKeyboardButton("✨ Paneli Aç", callback_data="panel_home")],
+        [
+            InlineKeyboardButton("➕ Gruba Ekle", url=ADD_BOT_URL),
+            InlineKeyboardButton("📢 Destek", url=SUPPORT_GROUP_URL)
+        ],
+        [InlineKeyboardButton("👤 Kurucu", url=OWNER_URL)]
     ])
 
 
-def panel_main_keyboard():
+def panel_home_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏷 Etiket İşlemleri", callback_data="panel_tag")],
-        [InlineKeyboardButton("⚙️ Ayarlar", callback_data="panel_settings")],
-        [InlineKeyboardButton("📊 İstatistik", callback_data="panel_stats")],
-        [InlineKeyboardButton("🔙 Geri", callback_data="back_main")],
+        [InlineKeyboardButton("🏷 Etiket İşlemleri", callback_data="panel_tags")],
+        [
+            InlineKeyboardButton("📊 İstatistikler", callback_data="panel_stats"),
+            InlineKeyboardButton("⚙️ Ayarlar", callback_data="panel_settings")
+        ],
+        [
+            InlineKeyboardButton("📖 Komutlar", callback_data="panel_help"),
+            InlineKeyboardButton("🛟 Destek", callback_data="panel_support")
+        ],
+        [InlineKeyboardButton("❌ Kapat", callback_data="close_panel")]
     ])
 
 
-def panel_tag_keyboard():
+def tags_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 Tüm Üyeleri Etiketle", callback_data="cmd_all")],
-        [InlineKeyboardButton("👮 Sadece Adminleri Etiketle", callback_data="cmd_alladmins")],
-        [InlineKeyboardButton("🔕 Sessiz Etiket", callback_data="cmd_silentall")],
-        [InlineKeyboardButton("🎲 Rastgele Etiket", callback_data="cmd_randomtag")],
-        [InlineKeyboardButton("🔍 Kullanıcı Ara", callback_data="cmd_search")],
-        [InlineKeyboardButton("🔙 Geri", callback_data="panel_main")],
+        [InlineKeyboardButton("👮 Adminleri Göster", callback_data="tag_admins")],
+        [InlineKeyboardButton("👥 Kayıtlı Kullanıcıları Göster", callback_data="tag_all")],
+        [
+            InlineKeyboardButton("🧾 Yönetim Özeti", callback_data="tag_summary"),
+            InlineKeyboardButton("🔎 Kullanıcı Ara", callback_data="tag_search")
+        ],
+        [InlineKeyboardButton("🎲 Rastgele Kullanıcı", callback_data="tag_random")],
+        [InlineKeyboardButton("🔙 Geri", callback_data="panel_home")]
     ])
 
 
-def panel_settings_keyboard(chat_id, settings):
-    enable_emoji = "✅" if settings["enable_log"] else "❌"
+def settings_keyboard(settings):
+    log_text = "✅ Açık" if settings["enable_log"] else "❌ Kapalı"
 
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("⏱ Cooldown", callback_data="setting_cooldown"),
-            InlineKeyboardButton(f"{settings['cooldown']}sn", callback_data="setting_cooldown"),
+            InlineKeyboardButton("⏱ Cooldown", callback_data="set_cooldown"),
+            InlineKeyboardButton(f"{settings['cooldown']} sn", callback_data="noop")
         ],
         [
-            InlineKeyboardButton("📦 Batch", callback_data="setting_batch"),
-            InlineKeyboardButton(f"{settings['batch_size']}", callback_data="setting_batch"),
+            InlineKeyboardButton("📦 Batch", callback_data="set_batch"),
+            InlineKeyboardButton(f"{settings['batch_size']}", callback_data="noop")
         ],
         [
-            InlineKeyboardButton("🎯 Rastgele Limit", callback_data="setting_random"),
-            InlineKeyboardButton(f"{settings['random_tag_default']}", callback_data="setting_random"),
+            InlineKeyboardButton("🎯 Rastgele", callback_data="set_random"),
+            InlineKeyboardButton(f"{settings['random_tag_default']}", callback_data="noop")
         ],
         [
-            InlineKeyboardButton(f"📝 Log {enable_emoji}", callback_data="setting_log_toggle"),
+            InlineKeyboardButton("📝 Log", callback_data="set_log"),
+            InlineKeyboardButton(log_text, callback_data="noop")
         ],
-        [InlineKeyboardButton("🔙 Geri", callback_data="panel_main")],
+        [InlineKeyboardButton("🔙 Geri", callback_data="panel_home")]
     ])
 
 
-def panel_stats_keyboard():
+def stats_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Sayıları Yenile", callback_data="panel_stats")],
-        [InlineKeyboardButton("👥 Kayıtlı Üyeler", callback_data="stats_members")],
-        [InlineKeyboardButton("👮 Admin Sayısı", callback_data="stats_admins")],
-        [InlineKeyboardButton("🔙 Geri", callback_data="panel_main")],
+        [InlineKeyboardButton("🔄 Yenile", callback_data="panel_stats")],
+        [InlineKeyboardButton("🔙 Geri", callback_data="panel_home")]
+    ])
+
+
+def support_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 Destek Grubu", url=SUPPORT_GROUP_URL)],
+        [InlineKeyboardButton("➕ Beni Gruba Ekle", url=ADD_BOT_URL)],
+        [InlineKeyboardButton("👤 Kurucu", url=OWNER_URL)],
+        [InlineKeyboardButton("🔙 Geri", callback_data="panel_home")]
     ])
 
 
 def help_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Geri", callback_data="back_main")],
+        [InlineKeyboardButton("🏠 Ana Panel", callback_data="panel_home")],
+        [InlineKeyboardButton("❌ Kapat", callback_data="close_panel")]
     ])
 
 
-def back_to_panel_keyboard():
+def close_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Panele Dön", callback_data="panel_main")],
+        [InlineKeyboardButton("🏠 Yeniden Aç", callback_data="panel_home")]
+    ])
+
+
+def back_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Panele Dön", callback_data="panel_home")]
     ])
